@@ -3,17 +3,34 @@ import streamlit as st
 from streamlit.logger import get_logger
 
 from ai_client import client
+from tools import tools, function_handler
 
 LOGGER = get_logger(__name__)
 
 
 def analyze_product():
-    response = client.responses.create(
-        model=st.session_state["openai_model"],
-        instructions="View the product page at the provided URL and identify key features and differentiators for the product.",
-        input=st.session_state['product_url'],
-    )
-    st.session_state['product_context'] = response.output_text
+    iterations = 0
+    input_list = [
+        {
+            "role": "user",
+            "content": f"View the product page at this URL {st.session_state['product_url']}. Identify key features and differentiators for the product.",
+        }
+    ]
+    while True:
+        iterations += 1
+        response = client.responses.create(
+            model=st.session_state["openai_model"],
+            tools=tools,
+            input=input_list,
+        )
+        input_list += response.output
+        tool_results = function_handler(response)
+        for result in tool_results:
+            input_list.append(result)
+        else:
+            st.session_state['product_context'] = response.output_text
+        if iterations > 5:
+            break
 
 def generate_titles():
     response = client.chat.completions.create(
@@ -70,23 +87,6 @@ def run():
     if 'product_context' in st.session_state:
         with st.form("product_context_form"):
             st.markdown(st.session_state["product_context"])
-
-    if 'title_options' in st.session_state:
-        with st.form("title_form"):
-            st.markdown("## Article Title\n\nSelect an article title with help from these suggestions.")
-            st.markdown("\n".join(f"- {t}" for t in st.session_state['title_options']))
-            st.text_input("Title", key="title")
-            st.form_submit_button("Go", on_click=generate_description)
-    
-    if 'description' in st.session_state:
-        with st.form("description_form"):
-            st.markdown("## Article Description\n\nTweak the meta description of your article.")
-            st.text_area("Description", key="description")
-            st.form_submit_button("Go", on_click=generate_outline)
-    
-    if 'outline' in st.session_state:
-        st.markdown(st.session_state['outline'])
-
 
 if __name__ == "__main__":
     run()
